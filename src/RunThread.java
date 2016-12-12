@@ -1,4 +1,5 @@
 import java.awt.Color;
+import java.awt.Point;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -13,6 +14,7 @@ public class RunThread {
     private Random mRandom = new Random();
     protected RunThreadUI mUI = null;
     private RunThread mSelf;
+    protected ArrayList<GPS> mPath = new ArrayList<GPS>();
     
     public RunThread() {
         mSelf = this;
@@ -23,10 +25,19 @@ public class RunThread {
         mainThread.start();
     }
     
+    public ArrayList<Point> getPath() {
+        ArrayList<Point> temp = new ArrayList<Point>();
+        
+        for (int i = 0; i < mPath.size(); i++) {
+            temp.add(new Point(mPath.get(i).getLat(), mPath.get(i).getLong()));
+        }
+        
+        return temp;
+    }
+    
     private class InitialThread extends Thread {
         private File map;
-        private int SURROUND = 0xFFFFFF; // WHITE
-        private final long SEED = 0xF8AD87; // Arbitrary random seed
+        private final long SEED = 0x68AD87; // Arbitrary random seed
         private final int NUMBER_VEHICLES = 200;
         private int WIDTH;
         private int HEIGHT;
@@ -111,10 +122,10 @@ public class RunThread {
             
             // Start the first sending to target (vehicle of random location)
             aVehicle.get(source).initialTransact(aVehicle.get(dest).getGPS());
-            
+            mPath.add(aVehicle.get(source).getGPS());
             System.out.println("Size: " + aVehicle.size());
             
-            mUI = new RunThreadUI(map, aVehicle);
+            mUI = new RunThreadUI(map, aVehicle, mSelf);
         }
     }
     

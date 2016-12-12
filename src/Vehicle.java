@@ -23,6 +23,7 @@ public class Vehicle extends RunThread {
     private Color mColor = Color.BLACK;
     private RunThread mRunThread;
     private boolean transacting;
+    private boolean delivered = false;
     
     public Vehicle(GPS coord, RunThread thread) {
         mCoord = coord;
@@ -98,9 +99,9 @@ public class Vehicle extends RunThread {
     
     public void requestToReceive(Vehicle v) {
         if (mSend == null) {
+            sVehicle = v;
             mSend = new SendThread();
             mSend.start();
-            sVehicle = v;
         } else {
             v.occurCollision();
             sVehicle.occurCollision();
@@ -148,8 +149,10 @@ public class Vehicle extends RunThread {
             mVehicle.notifyAll();
         }
         
+        mRunThread.mPath.add(mCoord);
+        
         for (int i = 0; i < mRunThread.aVehicle.size(); i++) {
-            finishSending();
+            mRunThread.aVehicle.get(i).finishSending();
         }
     }
     
@@ -190,6 +193,10 @@ public class Vehicle extends RunThread {
             mRunThread.mUI.updateFrame();
         }
         System.out.println("Next Jump");
+    }
+    
+    public void messageDelivered() {
+        delivered = true;
     }
     
     private class WorkThread extends Thread {
@@ -234,6 +241,12 @@ public class Vehicle extends RunThread {
                         e.printStackTrace();
                     }
                     
+                    for (int i = 0; i < mRunThread.aVehicle.size(); i++) {
+                        mRunThread.aVehicle.get(i).messageDelivered();
+                    }
+                    
+                    mRunThread.mPath.add(mCoord);
+                    
                     System.out.println("Reached Destination");
                 } else if (mAngle >= dAngle - ANGLE_DELTA
                         && mAngle <= dAngle + ANGLE_DELTA) {
@@ -243,6 +256,10 @@ public class Vehicle extends RunThread {
                             num_slots = mMod.getNewContention();
                             interrupt = false;
                             sleepFor(DIFS);
+                        }
+                        
+                        if (delivered) {
+                            return;
                         }
                         
                         // Time to send, so RTS (or receive RTR)

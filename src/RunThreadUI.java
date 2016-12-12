@@ -1,4 +1,5 @@
 import java.awt.Graphics;
+import java.awt.Point;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -18,6 +19,7 @@ public class RunThreadUI extends JFrame {
     private BufferedImage image = null;
     private ArrayList<Vehicle> mVehicles;
     private boolean updateFrame = false;
+    private RunThread mThread;
     
     private final JPanel panel = new JPanel() {
         /**
@@ -35,12 +37,26 @@ public class RunThreadUI extends JFrame {
                 g.setColor(c.getColor());
                 g.fillOval(c.getGPS().getLat(), c.getGPS().getLong(), 5, 5);
             }
+            
+            if (mThread != null) {
+                ArrayList<Point> temp = mThread.getPath();
+                
+                if (temp.size() >= 2) {
+                    for (int i = 0; i < temp.size(); i++) {
+                        if (i + 1 < temp.size()) {
+                            g.drawLine((int)temp.get(i).getX(), (int)temp.get(i).getY(),
+                                    (int)temp.get(i + 1).getX(), (int)temp.get(i + 1).getY());
+                        }
+                    }
+                }   
+            }
         }
     };
     
-    public RunThreadUI(File fp, ArrayList<Vehicle> vehicles) {
+    public RunThreadUI(File fp, ArrayList<Vehicle> vehicles, RunThread mSelf) {
         mFile = fp;
         mVehicles = vehicles;
+        mThread = mSelf;
         
         try {
             image = ImageIO.read(mFile);
@@ -53,7 +69,7 @@ public class RunThreadUI extends JFrame {
         setSize(image.getWidth(), image.getHeight());
         setVisible(true);
         
-        RunThread thread = new RunThread();
+        WorkThread thread = new WorkThread();
         thread.start();
         add(panel);
         updateFrame();
@@ -63,7 +79,7 @@ public class RunThreadUI extends JFrame {
         updateFrame = true;
     }
     
-    private class RunThread extends Thread {
+    private class WorkThread extends Thread {
         @Override
         public void run() {
             while (true) {
