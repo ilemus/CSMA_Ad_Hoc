@@ -1,20 +1,94 @@
+import java.awt.Color;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Random;
 
+import javax.imageio.ImageIO;
+
 public class RunThread {
-    /**
-     * Input source location, and current/destination location
-     * Then returns distance between two locations
-     * @param sourcex
-     * @param sourcey
-     * @param destx
-     * @param desty
-     * @return
-     */
-    private float getDistance(int sourcex, int sourcey, int destx, int desty) {
-        return (float) Math.sqrt(Math.pow(sourcex - destx, 2.0)
-                + Math.pow(sourcey - desty, 2.0));
+    protected ArrayList<Vehicle> aVehicle = new ArrayList<Vehicle>();
+    private int[][] mMap;
+    private Random mRandom = new Random();
+    private RunThreadUI mUI;
+    
+    public void startAlgorithm(File map) {
+        InitialThread mainThread = new InitialThread(map);
+        mainThread.start();
     }
     
+    private class InitialThread extends Thread {
+        private File map;
+        private int SURROUND = 0xFFFFFF; // WHITE
+        private final long SEED = 0xF0AB87; // Arbitrary random seed
+        private final int NUMBER_VEHICLES = 200;
+        private int WIDTH;
+        private int HEIGHT;
+        private int TOTAL_POS = 0;
+        
+        public InitialThread(File map) {
+            this.map = map;
+        }
+        
+        @Override
+        public void run() {
+            int count = 0;
+            int pos;
+            
+            try {
+                BufferedImage bImg = ImageIO.read(map);
+                mMap = new int[bImg.getWidth()][bImg.getHeight()];
+                WIDTH = bImg.getWidth();
+                HEIGHT = bImg.getHeight();
+                
+                for (int i = 0; i < WIDTH; i++) {
+                    for (int j = 0; j < HEIGHT; j++) {
+                        if (bImg.getRGB(i, j) < SURROUND) {
+                            mMap[i][j] = 1;
+                            TOTAL_POS++;
+                        } else {
+                            mMap[i][j] = 0;
+                        }
+                    }
+                }
+            } catch (IOException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+            
+            mRandom.setSeed(SEED);
+            
+            // It is possible for a location to have multiple cars
+            for (int i = 0; i < NUMBER_VEHICLES; i++) {
+                pos = mRandom.nextInt(TOTAL_POS);
+                
+                for (int j = 0; j < WIDTH; j++) {
+                    for (int k = 0; k < HEIGHT; k++) {
+                        if (count == pos) {
+                            GPS gps = new GPS(j, k);
+                            Vehicle temp = new Vehicle(gps);
+                            aVehicle.add(temp);
+                            count = 0;
+                        } else {
+                            count++;
+                        }
+                    }
+                }
+            }
+            
+            mUI = new RunThreadUI(map, aVehicle);
+            
+            // Possibility that destination and source are same location
+            int source = mRandom.nextInt(NUMBER_VEHICLES);
+            int dest = mRandom.nextInt(NUMBER_VEHICLES);
+            
+            aVehicle.get(dest).setColor(Color.RED);
+            
+            // Start the first sending to target (vehicle of random location)
+            aVehicle.get(source).initialTransact(aVehicle.get(dest).getGPS());
+        }
+    }
     
     protected class GPS {
         private int lat_x, long_y;
@@ -30,68 +104,6 @@ public class RunThread {
         
         public int getLong() {
             return long_y;
-        }
-    }
-    
-    private class Module {
-        private Random mRand = new Random();
-        private int mExp = 0;
-        private final int MAX_EXP = 10;
-        
-        public int getNewContention() {
-            return mRand.nextInt((int) Math.pow(2.0, (double) mExp));
-        }
-        
-        public void occurCollision() {
-            // Exponential expansion
-            if (mExp < MAX_EXP) {
-                mExp++;
-            }
-        }
-    }
-    
-    private class Vehicle extends RunThread {
-        private GPS mCoord;
-        private GPS sCoord;
-        private GPS dCoord;
-        private WorkThread mThread = null;
-        private final double MIN_ANGLE = 15;
-        private final double MAX_ANGLE = 90 - MIN_ANGLE;
-        private Module mMod;
-        
-        public Vehicle(GPS coord) {
-            mCoord = coord;
-            mMod = new Module();
-        }
-        
-        public void ping(GPS source, GPS dest) {
-            sCoord = source;
-            dCoord = dest;
-            
-            /** If there is an existing request to send
-             * Then ignore the request, start a new one
-            */
-            mThread = new WorkThread();
-            mThread.start();
-        }
-        
-        private class WorkThread extends Thread {
-            @Override
-            public void run() {
-                float deltax, deltay, destx, desty;
-                // Sanity check, is the source location within 100 m
-                if (getDistance(sCoord.getLat(), sCoord.getLong(),
-                        mCoord.getLat(), mCoord.getLong()) <= 100.0) {
-                    deltax = sCoord.getLat() - mCoord.getLat();
-                    deltay = sCoord.getLong() - mCoord.getLong();
-                    destx = sCoord.getLat() - dCoord.getLat();
-                    desty = sCoord.getLong() - dCoord.getLong();
-                    double dAngle = Math.toDegrees(Math.atan(desty/destx));
-                    double mAngle = Math.toDegrees(Math.atan(deltay/deltax));
-                    
-                    // Is this module within the correct angle of the target?
-                }
-            }
         }
     }
 }
