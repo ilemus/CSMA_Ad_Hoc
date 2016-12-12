@@ -9,7 +9,7 @@ public class MainThread {
             fp = new File(args[0]);
             thread.startAlgorithm(fp);
         } else {
-            fp = new File("localmap");
+            fp = new File("localmap.gif");
             thread.startAlgorithm(fp);
         }
     }

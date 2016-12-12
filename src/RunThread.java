@@ -11,7 +11,12 @@ public class RunThread {
     protected ArrayList<Vehicle> aVehicle = new ArrayList<Vehicle>();
     private int[][] mMap;
     private Random mRandom = new Random();
-    private RunThreadUI mUI;
+    protected RunThreadUI mUI = null;
+    private RunThread mSelf;
+    
+    public RunThread() {
+        mSelf = this;
+    }
     
     public void startAlgorithm(File map) {
         InitialThread mainThread = new InitialThread(map);
@@ -21,7 +26,7 @@ public class RunThread {
     private class InitialThread extends Thread {
         private File map;
         private int SURROUND = 0xFFFFFF; // WHITE
-        private final long SEED = 0xF0AB87; // Arbitrary random seed
+        private final long SEED = 0xF8AD87; // Arbitrary random seed
         private final int NUMBER_VEHICLES = 200;
         private int WIDTH;
         private int HEIGHT;
@@ -35,16 +40,20 @@ public class RunThread {
         public void run() {
             int count = 0;
             int pos;
+            boolean found = false;
             
             try {
                 BufferedImage bImg = ImageIO.read(map);
+                Color temp;
                 mMap = new int[bImg.getWidth()][bImg.getHeight()];
                 WIDTH = bImg.getWidth();
                 HEIGHT = bImg.getHeight();
-                
+
                 for (int i = 0; i < WIDTH; i++) {
                     for (int j = 0; j < HEIGHT; j++) {
-                        if (bImg.getRGB(i, j) < SURROUND) {
+                        // This distinguishes the road from its surroundings (surroundings are white)
+                        temp = new Color(bImg.getRGB(i, j));
+                        if (temp.getBlue() < 255 && temp.getRed() < 255 & temp.getGreen() < 255) {
                             mMap[i][j] = 1;
                             TOTAL_POS++;
                         } else {
@@ -62,22 +71,37 @@ public class RunThread {
             // It is possible for a location to have multiple cars
             for (int i = 0; i < NUMBER_VEHICLES; i++) {
                 pos = mRandom.nextInt(TOTAL_POS);
+                count = 0;
+                found = false;
                 
                 for (int j = 0; j < WIDTH; j++) {
                     for (int k = 0; k < HEIGHT; k++) {
+                        if (mMap[j][k] == 1 && pos != 0) {
+                            count++;
+                        } else if (mMap[j][k] == 1) {
+                            GPS gps = new GPS(j, k);
+                            Vehicle temp = new Vehicle(gps, mSelf);
+                            aVehicle.add(temp);
+                            found = true;
+                            count = 0;
+                            break;
+                        }
+                        
                         if (count == pos) {
                             GPS gps = new GPS(j, k);
-                            Vehicle temp = new Vehicle(gps);
+                            Vehicle temp = new Vehicle(gps, mSelf);
                             aVehicle.add(temp);
+                            found = true;
                             count = 0;
-                        } else {
-                            count++;
+                            break;
                         }
+                    }
+                    
+                    if (found) {
+                        break;
                     }
                 }
             }
-            
-            mUI = new RunThreadUI(map, aVehicle);
             
             // Possibility that destination and source are same location
             int source = mRandom.nextInt(NUMBER_VEHICLES);
@@ -87,6 +111,10 @@ public class RunThread {
             
             // Start the first sending to target (vehicle of random location)
             aVehicle.get(source).initialTransact(aVehicle.get(dest).getGPS());
+            
+            System.out.println("Size: " + aVehicle.size());
+            
+            mUI = new RunThreadUI(map, aVehicle);
         }
     }
     
@@ -104,6 +132,10 @@ public class RunThread {
         
         public int getLong() {
             return long_y;
+        }
+        
+        public boolean compare(GPS coord) {
+            return coord.getLat() == lat_x && coord.getLong() == long_y;
         }
     }
 }
