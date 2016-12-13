@@ -6,7 +6,7 @@ public class Vehicle extends RunThread {
     private GPS sCoord;
     private GPS dCoord;
     private WorkThread mThread = null;
-    private final double ANGLE_DELTA = 45;
+    private final double ANGLE_DELTA = 15;
     private Module mMod;
     private int num_slots;
     private boolean interrupt = false;
@@ -173,6 +173,8 @@ public class Vehicle extends RunThread {
             sVehicle.sleepFor(byteDuration(1000));
             
             sVehicle.endSend();
+            
+            mSend = null;
         }
     }
     
@@ -180,13 +182,16 @@ public class Vehicle extends RunThread {
         mColor = Color.RED;
         
         for (int i = 0; i < mRunThread.aVehicle.size(); i++) {
-            mRunThread.aVehicle.get(i).ping(mCoord, dest, mVehicle);
+            if (!mRunThread.aVehicle.get(i).getGPS().compare(mCoord)) {
+                mRunThread.aVehicle.get(i).ping(mCoord, dest, mVehicle);
+            }
         }
     }
     
     public void startTransaction() {
         for (int i = 0; i < mRunThread.aVehicle.size(); i++) {
-            mRunThread.aVehicle.get(i).ping(mCoord, dCoord, mVehicle);
+            if (!mRunThread.aVehicle.get(i).getGPS().compare(mCoord))
+                mRunThread.aVehicle.get(i).ping(mCoord, dCoord, mVehicle);
         }
         
         if (mRunThread.mUI != null) {
@@ -202,11 +207,10 @@ public class Vehicle extends RunThread {
     private class WorkThread extends Thread {
         @Override
         public void run() {
-            float deltax, deltay, destx, desty;
+            double deltax, deltay, destx, desty;
             // Sanity check, is the source location within 100 m
             if (getDistance(sCoord.getLat(), sCoord.getLong(),
                     mCoord.getLat(), mCoord.getLong()) <= 100.0) {
-                mColor = Color.BLUE;
                 deltax = sCoord.getLat() - mCoord.getLat();
                 deltay = sCoord.getLong() - mCoord.getLong();
                 destx = sCoord.getLat() - dCoord.getLat();
@@ -248,8 +252,11 @@ public class Vehicle extends RunThread {
                     mRunThread.mPath.add(mCoord);
                     
                     System.out.println("Reached Destination");
+                } else if (mCoord.compare(sCoord)) {
+                    // Ignore
                 } else if (mAngle >= dAngle - ANGLE_DELTA
                         && mAngle <= dAngle + ANGLE_DELTA) {
+                    mColor = Color.BLUE;
                     while (true) {
                         // Interrupts if collision occurred
                         if (interrupt) {
@@ -271,6 +278,10 @@ public class Vehicle extends RunThread {
                                     // TODO Auto-generated catch block
                                     e.printStackTrace();
                                 }
+                            }
+                            
+                            if (!transacting) {
+                                return;
                             }
                         } else if (num_slots == 0) {
                             oVehicle.requestToReceive(mVehicle);
@@ -310,6 +321,8 @@ public class Vehicle extends RunThread {
                             sleepFor(SLOT);
                         }
                     }
+                } else {
+                    mColor = Color.CYAN;
                 }
             }
         }

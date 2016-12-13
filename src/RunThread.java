@@ -37,7 +37,7 @@ public class RunThread {
     
     private class InitialThread extends Thread {
         private File map;
-        private final long SEED = 0x68AD87; // Arbitrary random seed
+        private final long SEED = 0xAA7B87; // Arbitrary random seed
         private final int NUMBER_VEHICLES = 200;
         private int WIDTH;
         private int HEIGHT;
