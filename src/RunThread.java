@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Random;
-import java.util.Scanner;
 
 import javax.imageio.ImageIO;
 
@@ -18,9 +17,12 @@ public class RunThread {
     private RunThread mSelf;
     protected ArrayList<GPS> mPath = new ArrayList<GPS>();
     private ArrayList<Integer> mContend = new ArrayList<Integer>();
+    private RecordThread mRt = null;
+    private static final boolean DEMONSTRATE = false;
     
     public RunThread() {
         mSelf = this;
+        mRt = RecordThread.getRecordThread();
     }
     
     public void startAlgorithm(File map) {
@@ -40,7 +42,7 @@ public class RunThread {
     
     private class InitialThread extends Thread {
         private File map;
-        private final long SEED = 0xAA7887; // Arbitrary random seed
+        private final long SEED = 0x2A0887; // Arbitrary random seed
         private final int NUMBER_VEHICLES = 200;
         private int WIDTH;
         private int HEIGHT;
@@ -80,7 +82,11 @@ public class RunThread {
                 e.printStackTrace();
             }
             
-            mRandom.setSeed(SEED);
+            int tseed = mRandom.nextInt();
+            
+            System.out.println("Seed" + tseed);
+            
+            mRandom.setSeed(tseed);
             
             // It is possible for a location to have multiple cars
             for (int i = 0; i < NUMBER_VEHICLES; i++) {
@@ -126,9 +132,10 @@ public class RunThread {
             // Start the first sending to target (vehicle of random location)
             aVehicle.get(source).initialTransact(aVehicle.get(dest).getGPS());
             mPath.add(aVehicle.get(source).getGPS());
-            System.out.println("Size: " + aVehicle.size());
             
-            mUI = new RunThreadUI(map, aVehicle, mSelf);
+            if (DEMONSTRATE) {
+                mUI = new RunThreadUI(map, aVehicle, mSelf);
+            }
         }
     }
     
@@ -158,7 +165,13 @@ public class RunThread {
     }
     
     public void clearContend() {
-        System.out.println("Candidates: " + Arrays.toString(mContend.toArray()));
+        if (DEMONSTRATE) {
+            System.out.println("Candidates: " + Arrays.toString(mContend.toArray()));
+        }
         mContend.clear();
+    }
+    
+    public void notifyFinished() {
+        mRt.addHopCount(mPath.size());
     }
 }

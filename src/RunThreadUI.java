@@ -1,3 +1,4 @@
+import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.Point;
 import java.awt.image.BufferedImage;
@@ -42,6 +43,7 @@ public class RunThreadUI extends JFrame {
                 ArrayList<Point> temp = mThread.getPath();
                 
                 if (temp.size() >= 2) {
+                    g.setColor(Color.RED);
                     for (int i = 0; i < temp.size(); i++) {
                         if (i + 1 < temp.size()) {
                             g.drawLine((int)temp.get(i).getX(), (int)temp.get(i).getY(),

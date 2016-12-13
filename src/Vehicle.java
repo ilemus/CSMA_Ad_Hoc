@@ -14,7 +14,7 @@ public class Vehicle extends RunThread {
     // Not caring about CTS and ACK time, since overkill
     //private final int SIFS = 10;
     private final int SLOT = 5;
-    private final int DIFS = 50;
+    private final int DIFS = 50; // Ensure there is not thread collision
     private final int MEGA_BYTE = 1000 * 1000;
     private final double FREQ = 3.375 * MEGA_BYTE; // 12MB/s
     private Vehicle oVehicle;
@@ -28,6 +28,8 @@ public class Vehicle extends RunThread {
     private int VIN;
     private boolean I_AM_ORIGIN = false;
     private TaskTimeOut mTimeout;
+    private static final int ASSUME_LOST = 25;
+    private static final boolean DEBUG = false;
     
     public Vehicle(GPS coord, RunThread thread) {
         mCoord = coord;
@@ -155,7 +157,7 @@ public class Vehicle extends RunThread {
     public synchronized boolean requestToReceive(Vehicle v) {
         boolean success = false;
         
-        if (interrupt) {
+        if (interrupt || delivered) {
             // Do not accept any RTRs
         } else if (mSend == null) {
             sVehicle = v;
@@ -194,6 +196,10 @@ public class Vehicle extends RunThread {
             mVehicle.notifyAll();
         }
         
+        if (mColor != Color.GREEN && mColor != Color.RED) {
+            mColor = Color.BLACK;
+        }
+        
         transacting = false;
     }
     
@@ -228,7 +234,7 @@ public class Vehicle extends RunThread {
                 sleep(byteDuration(1000));
             } catch (InterruptedException e) {
                 // Collision occurs kill self
-                System.out.println(getVin() + ": KILL SEND THREAD");
+                log(getVin() + ": KILL SEND THREAD");
                 return;
             }
             
@@ -242,6 +248,8 @@ public class Vehicle extends RunThread {
     public void initialTransact(GPS dest) {
         mColor = Color.RED;
         I_AM_ORIGIN = true;
+        sCoord = mCoord;
+        dCoord = dest;
         
         mTimeout = new TaskTimeOut();
         mTimeout.start();
@@ -256,13 +264,18 @@ public class Vehicle extends RunThread {
     
     // Start the next connection (lengthen bridge)
     public void startTransaction() {
+        if (mRunThread.mPath.size() > ASSUME_LOST) {
+            mRunThread.notifyFinished();
+            return;
+        }
+        
         mTimeout = new TaskTimeOut();
         mTimeout.start();
         
         for (int i = 0; i < mRunThread.aVehicle.size(); i++) {
             if (getDistance(mCoord, mRunThread.aVehicle.get(i).getGPS()) <= 100
                     && !mRunThread.aVehicle.get(i).getGPS().compare(mCoord)
-                    && !mRunThread.aVehicle.get(i).getGPS().compare(oVehicle.getGPS())) {
+                    && (I_AM_ORIGIN || !mRunThread.aVehicle.get(i).getGPS().compare(oVehicle.getGPS()))) {
                 mRunThread.aVehicle.get(i).getModule().resetCollision();
                 mRunThread.aVehicle.get(i).ping(sCoord, dCoord, mVehicle);
             }
@@ -362,7 +375,9 @@ public class Vehicle extends RunThread {
                     mRunThread.mUI.updateFrame();
                 }
                 
-                System.out.println(VIN + ": Reached Destination");
+                mRunThread.notifyFinished();
+                
+                log(VIN + ": Reached Destination");
                 return;
             } else if (mCoord.compare(sCoord)) {
                 // Ignore when the current coordinate is the source coordinate
@@ -374,21 +389,21 @@ public class Vehicle extends RunThread {
                     sleep(DIFS);
                 } catch (InterruptedException e) {
                     // Abnormal exception, kill self anyway
-                    e.printStackTrace();
+                    //e.printStackTrace();
                     return;
                 }
                 
                 while (true) {
                     // Interrupts if collision occurred
                     if (interrupt) {
-                        System.out.println(VIN + ": Collision occured");
+                        log(VIN + ": Collision occured");
                         num_slots = mMod.getNewContention();
                         interrupt = false;
                         try {
                             sleep(DIFS);
                         } catch (InterruptedException e) {
                             // Abnormal exception, kill self anyway
-                            e.printStackTrace();
+                            //e.printStackTrace();
                             return;
                         }
                         
@@ -403,10 +418,10 @@ public class Vehicle extends RunThread {
                     // Time to send, so RTS (or receive RTR)
                     if (transacting) {
                         mRunThread.addContend(VIN);
-                        System.out.println(VIN + ": transacting occured");
+                        log(VIN + ": transacting occured");
                         synchronized (mVehicle) {
                             try {
-                                mVehicle.wait();
+                                mVehicle.wait(10000);
                             } catch (InterruptedException e) {
                                 // Just kill self, this occurs when found destination
                                 return;
@@ -417,12 +432,12 @@ public class Vehicle extends RunThread {
                             return;
                         }
                     } else if (num_slots == 0) {
-                        System.out.println(VIN + ": Start, angle: " + Math.toDegrees(Math.abs(mAngle - dAngle)));
+                        log(VIN + ": Start, angle: " + Math.toDegrees(Math.abs(mAngle - dAngle)));
                         if (!oVehicle.requestToReceive(mVehicle)) {
                             continue;
                         }
                         
-                        System.out.println(VIN + ": RTR success");
+                        log(VIN + ": RTR success");
                         try {
                             synchronized (mVehicle) {
                                 mVehicle.wait();
@@ -444,15 +459,18 @@ public class Vehicle extends RunThread {
                         } catch (InterruptedException e) {
                             // Should not be interrupted in this manner
                             e.printStackTrace();
+                            return;
                         }
                         
                         if (interrupt) {
                             continue;
                         } else {
-                            System.out.println(VIN + ": End transaction");
+                            log(VIN + ": End transaction");
                             mColor = Color.GREEN;
                             
                             /*
+                            mRunThread.mUI.updateFrame();
+                            
                             Scanner mScanner = new Scanner(System.in);
                             mScanner.nextLine();
                             */
@@ -478,4 +496,9 @@ public class Vehicle extends RunThread {
         }
     }
 
+    private void log(String line) {
+        if (DEBUG) {
+            System.out.println(line);
+        }
+    }
 }
