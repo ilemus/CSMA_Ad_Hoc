@@ -48,7 +48,7 @@ public class RunThreadUI extends JFrame {
                                     (int)temp.get(i + 1).getX(), (int)temp.get(i + 1).getY());
                         }
                     }
-                }   
+                }
             }
         }
     };

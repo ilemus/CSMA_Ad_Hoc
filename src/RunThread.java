@@ -4,7 +4,9 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Random;
+import java.util.Scanner;
 
 import javax.imageio.ImageIO;
 
@@ -15,6 +17,7 @@ public class RunThread {
     protected RunThreadUI mUI = null;
     private RunThread mSelf;
     protected ArrayList<GPS> mPath = new ArrayList<GPS>();
+    private ArrayList<Integer> mContend = new ArrayList<Integer>();
     
     public RunThread() {
         mSelf = this;
@@ -37,7 +40,7 @@ public class RunThread {
     
     private class InitialThread extends Thread {
         private File map;
-        private final long SEED = 0xAA7B87; // Arbitrary random seed
+        private final long SEED = 0xAA7887; // Arbitrary random seed
         private final int NUMBER_VEHICLES = 200;
         private int WIDTH;
         private int HEIGHT;
@@ -148,5 +151,14 @@ public class RunThread {
         public boolean compare(GPS coord) {
             return coord.getLat() == lat_x && coord.getLong() == long_y;
         }
+    }
+    
+    public void addContend(int vin) {
+        mContend.add(vin);
+    }
+    
+    public void clearContend() {
+        System.out.println("Candidates: " + Arrays.toString(mContend.toArray()));
+        mContend.clear();
     }
 }

@@ -1,19 +1,20 @@
 import java.awt.Color;
 import java.util.Random;
+import java.util.Scanner;
 
 public class Vehicle extends RunThread {
     private GPS mCoord;
     private GPS sCoord;
     private GPS dCoord;
     private WorkThread mThread = null;
-    private final double ANGLE_DELTA = 15;
+    private double ANGLE_DELTA = 15;
     private Module mMod;
     private int num_slots;
     private boolean interrupt = false;
     // Not caring about CTS and ACK time, since overkill
     //private final int SIFS = 10;
-    private final int SLOT = 20;
-    private final int DIFS = 50;
+    private final int SLOT = 2;
+    private final int DIFS = 5;
     private final int MEGA_BYTE = 1000 * 1000;
     private final double FREQ = 3.375 * MEGA_BYTE; // 12MB/s
     private Vehicle oVehicle;
@@ -24,12 +25,16 @@ public class Vehicle extends RunThread {
     private RunThread mRunThread;
     private boolean transacting;
     private boolean delivered = false;
+    private int VIN;
+    private boolean I_AM_ORIGIN = false;
+    private TaskTimeOut mTimeout;
     
     public Vehicle(GPS coord, RunThread thread) {
         mCoord = coord;
         mMod = new Module();
         mVehicle = this;
         mRunThread = thread;
+        VIN = this.hashCode();
     }
     
     public GPS getGPS() {
@@ -38,6 +43,43 @@ public class Vehicle extends RunThread {
     
     public Color getColor() {
         return mColor;
+    }
+    
+    public Module getModule() {
+        return mMod;
+    }
+    
+    public void setColor(Color c) {
+        mColor = c;
+    }
+    
+    public void doubleAngle() {
+        ANGLE_DELTA = ANGLE_DELTA * 2;
+    }
+    
+    public void resetAngle() {
+        ANGLE_DELTA = 15;
+    }
+    
+    public void occurCollision() {
+        interrupt = true;
+        mMod.occurCollision();
+        
+        synchronized (mVehicle) {
+            mVehicle.notify();
+        }
+    }
+    
+    public int getVin() {
+        return VIN;
+    }
+    
+    private long byteDuration(int bytes) {
+        long value;
+        double TO_MICRO_SEC = 1000000.0;
+        value = (long) (bytes * TO_MICRO_SEC / FREQ);
+        
+        return value;
     }
     
     /**
@@ -54,6 +96,18 @@ public class Vehicle extends RunThread {
                 + Math.pow(sourcey - desty, 2.0));
     }
     
+    /**
+     * Input source location, and current/destination location
+     * Then returns distance between two locations
+     * @param a
+     * @param b
+     * @return
+     */
+    private float getDistance(GPS a, GPS b) {
+        return (float) Math.sqrt(Math.pow(a.getLat() - b.getLat(), 2.0)
+                + Math.pow(a.getLong() - b.getLong(), 2.0));
+    }
+    
     private class Module {
         private Random mRand = new Random();
         private int mExp = 0;
@@ -62,6 +116,10 @@ public class Vehicle extends RunThread {
         public int getNewContention() {
             // Return the time slot
             return mRand.nextInt((int) Math.pow(2.0, (double) mExp));
+        }
+        
+        public void resetCollision() {
+            mExp = 0;
         }
         
         public void occurCollision() {
@@ -77,6 +135,11 @@ public class Vehicle extends RunThread {
         dCoord = dest;
         oVehicle = v;
         
+        // Origin should not restart
+        if (I_AM_ORIGIN) {
+            return;
+        }
+        
         /** If there is an existing request to send/receive
          * Then ignore the request, start a new one
         */
@@ -84,50 +147,27 @@ public class Vehicle extends RunThread {
         mThread.start();
     }
     
-    public void setColor(Color c) {
-        mColor = c;
-    }
-    
-    public void occurCollision() {
-        interrupt = true;
-        mMod.occurCollision();
-        
-        synchronized (mVehicle) {
-            mVehicle.notify();
-        }
-    }
-    
-    public void requestToReceive(Vehicle v) {
+    public synchronized void requestToReceive(Vehicle v) {
         if (mSend == null) {
             sVehicle = v;
             mSend = new SendThread();
             mSend.start();
         } else {
-            v.occurCollision();
-            sVehicle.occurCollision();
+            for (int i = 0; i < mRunThread.aVehicle.size(); i++) {
+                if (getDistance(mCoord, mRunThread.aVehicle.get(i).getGPS()) <= 100) {
+                    mRunThread.aVehicle.get(i).occurCollision();
+                }
+            }
             
             if (mSend != null) {
                 mSend.interrupt();
                 mSend = null;
             }
         }
-    }
-    
-    private void sleepFor(long ms) {
-        try {
-            Thread.sleep(ms);
-        } catch (InterruptedException e) {
-            // Occur collision or other
-            System.out.println("Thread has been interrupted");
-        }
-    }
-    
-    private long byteDuration(int bytes) {
-        long value;
-        double TO_MICRO_SEC = 1000000.0;
-        value = (long) (bytes * TO_MICRO_SEC / FREQ);
         
-        return value;
+        if (mTimeout != null) {
+            mTimeout.interrupt();
+        }
     }
     
     public void clearToReceive() {
@@ -136,6 +176,7 @@ public class Vehicle extends RunThread {
         }
     }
     
+    // Client notification
     public void finishSending() {
         synchronized (mVehicle) {
             mVehicle.notify();
@@ -144,6 +185,7 @@ public class Vehicle extends RunThread {
         transacting = false;
     }
     
+    // Server notification
     public void endSend() {
         synchronized (mVehicle) {
             mVehicle.notifyAll();
@@ -152,10 +194,14 @@ public class Vehicle extends RunThread {
         mRunThread.mPath.add(mCoord);
         
         for (int i = 0; i < mRunThread.aVehicle.size(); i++) {
-            mRunThread.aVehicle.get(i).finishSending();
+            if (getDistance(mCoord, mRunThread.aVehicle.get(i).getGPS()) <= 100) {
+                mRunThread.aVehicle.get(i).finishSending();
+                mRunThread.aVehicle.get(i).resetAngle();
+            }
         }
     }
     
+    // Client monitoring
     public void isTransact() {
         transacting = true;
     }
@@ -166,11 +212,19 @@ public class Vehicle extends RunThread {
             sVehicle.clearToReceive();
             
             for (int i = 0; i < mRunThread.aVehicle.size(); i++) {
-                mRunThread.aVehicle.get(i).isTransact();
+                if (getDistance(mCoord, mRunThread.aVehicle.get(i).getGPS()) <= 100) {
+                    mRunThread.aVehicle.get(i).isTransact();
+                }
             }
             
             // Packet is 1000 bytes
-            sVehicle.sleepFor(byteDuration(1000));
+            try {
+                sleep(byteDuration(1000));
+            } catch (InterruptedException e) {
+                // Collision occurs kill self
+                System.out.println(sVehicle.getVin()+ ": KILL SEND THREAD");
+                return;
+            }
             
             sVehicle.endSend();
             
@@ -178,152 +232,218 @@ public class Vehicle extends RunThread {
         }
     }
     
+    // First transaction (push of dominoes)
     public void initialTransact(GPS dest) {
         mColor = Color.RED;
+        I_AM_ORIGIN = true;
+        
+        mTimeout = new TaskTimeOut();
+        mTimeout.start();
         
         for (int i = 0; i < mRunThread.aVehicle.size(); i++) {
-            if (!mRunThread.aVehicle.get(i).getGPS().compare(mCoord)) {
+            if (getDistance(mCoord, mRunThread.aVehicle.get(i).getGPS()) <= 100
+                    && !mRunThread.aVehicle.get(i).getGPS().compare(mCoord)) {
                 mRunThread.aVehicle.get(i).ping(mCoord, dest, mVehicle);
             }
         }
     }
     
+    // Start the next connection (lengthen bridge)
     public void startTransaction() {
+        mTimeout = new TaskTimeOut();
+        mTimeout.start();
+        
         for (int i = 0; i < mRunThread.aVehicle.size(); i++) {
-            if (!mRunThread.aVehicle.get(i).getGPS().compare(mCoord))
-                mRunThread.aVehicle.get(i).ping(mCoord, dCoord, mVehicle);
+            if (getDistance(mCoord, mRunThread.aVehicle.get(i).getGPS()) <= 100
+                    && !mRunThread.aVehicle.get(i).getGPS().compare(mCoord)
+                    && !mRunThread.aVehicle.get(i).getGPS().compare(oVehicle.getGPS())) {
+                mRunThread.aVehicle.get(i).getModule().resetCollision();
+                mRunThread.aVehicle.get(i).ping(sCoord, dCoord, mVehicle);
+            }
         }
+        
+        mRunThread.clearContend();
         
         if (mRunThread.mUI != null) {
             mRunThread.mUI.updateFrame();
         }
-        System.out.println("Next Jump");
     }
     
+    private class TaskTimeOut extends Thread {
+        @Override
+        public void run() {
+            try {
+                // Absolute max time to wait
+                sleep(DIFS + SLOT * 1024);
+            } catch (InterruptedException e) {
+                return;
+            }
+            
+            for (int i = 0; i < mRunThread.aVehicle.size(); i++) {
+                if (getDistance(mCoord, mRunThread.aVehicle.get(i).getGPS()) <= 100
+                        && !mRunThread.aVehicle.get(i).getGPS().compare(mCoord)) {
+                    mRunThread.aVehicle.get(i).doubleAngle();
+                }
+            }
+            
+            startTransaction();
+        }
+    }
+    
+    // Finish all threads
     public void messageDelivered() {
         delivered = true;
+        
+        // Clean up threads
+        if (mTimeout != null) {
+            mTimeout.interrupt();
+        }
+        
+        if (mSend != null) {
+            mSend.interrupt();
+        }
+        
+        if (mThread != null) {
+            mThread.interrupt();
+        }
     }
     
     private class WorkThread extends Thread {
         @Override
         public void run() {
-            double deltax, deltay, destx, desty;
-            // Sanity check, is the source location within 100 m
-            if (getDistance(sCoord.getLat(), sCoord.getLong(),
-                    mCoord.getLat(), mCoord.getLong()) <= 100.0) {
-                deltax = sCoord.getLat() - mCoord.getLat();
-                deltay = sCoord.getLong() - mCoord.getLong();
-                destx = sCoord.getLat() - dCoord.getLat();
-                desty = sCoord.getLong() - dCoord.getLong();
-                double dAngle = Math.toDegrees(Math.atan(desty/destx));
-                double mAngle = Math.toDegrees(Math.atan(deltay/deltax));
+        double deltax, deltay, destx, desty;
+            deltax = sCoord.getLat() - mCoord.getLat();
+            deltay = sCoord.getLong() - mCoord.getLong();
+            destx = sCoord.getLat() - dCoord.getLat();
+            desty = sCoord.getLong() - dCoord.getLong();
+            double dAngle = Math.atan2(desty, destx);
+            double mAngle = Math.atan2(deltay, deltax);
+            
+            // Is this module the destination?
+            if (mCoord.compare(dCoord)) {
+                oVehicle.requestToReceive(mVehicle);
                 
-                // Is this module within the correct angle of the target?
-                if (mCoord.compare(dCoord)) {
-                    oVehicle.requestToReceive(mVehicle);
-                    
-                    try {
-                        synchronized (mVehicle) {
-                            mVehicle.wait();
+                try {
+                    synchronized (mVehicle) {
+                        mVehicle.wait();
+                    }
+                } catch (InterruptedException e) {
+                    // Should not be interrupted in this manner
+                    e.printStackTrace();
+                }
+                
+                if (interrupt) {
+                    return;
+                }
+                
+                // Now wait until transaction is complete (1000 byte data transfer)
+                try {
+                    synchronized (mVehicle) {
+                        mVehicle.wait();
+                    }
+                } catch (InterruptedException e) {
+                    // Should not be interrupted in this manner
+                    e.printStackTrace();
+                }
+                
+                for (int i = 0; i < mRunThread.aVehicle.size(); i++) {
+                    mRunThread.aVehicle.get(i).messageDelivered();
+                }
+                
+                mRunThread.mPath.add(mCoord);
+                
+                System.out.println(VIN + ": Reached Destination");
+                return;
+            } else if (mCoord.compare(sCoord)) {
+                // Ignore when the current coordinate is the source coordinate
+                return;
+            } else if (Math.toDegrees(Math.abs(mAngle - dAngle)) < ANGLE_DELTA) {
+                mColor = Color.BLUE;
+                while (true) {
+                    // Interrupts if collision occurred
+                    if (interrupt) {
+                        System.out.println(VIN + ": Collision occured");
+                        num_slots = mMod.getNewContention();
+                        interrupt = false;
+                        try {
+                            sleep(DIFS);
+                        } catch (InterruptedException e) {
+                            // Abnormal exception, kill self anyway
+                            return;
                         }
-                    } catch (InterruptedException e) {
-                        // Should not be interrupted in this manner
-                        e.printStackTrace();
                     }
                     
-                    if (interrupt) {
+                    if (delivered) {
                         return;
                     }
                     
-                    // Now wait until transaction is complete (1000 byte data transfer)
-                    try {
+                    // Time to send, so RTS (or receive RTR)
+                    if (transacting) {
+                        mRunThread.addContend(VIN);
                         synchronized (mVehicle) {
-                            mVehicle.wait();
-                        }
-                    } catch (InterruptedException e) {
-                        // Should not be interrupted in this manner
-                        e.printStackTrace();
-                    }
-                    
-                    for (int i = 0; i < mRunThread.aVehicle.size(); i++) {
-                        mRunThread.aVehicle.get(i).messageDelivered();
-                    }
-                    
-                    mRunThread.mPath.add(mCoord);
-                    
-                    System.out.println("Reached Destination");
-                } else if (mCoord.compare(sCoord)) {
-                    // Ignore
-                } else if (mAngle >= dAngle - ANGLE_DELTA
-                        && mAngle <= dAngle + ANGLE_DELTA) {
-                    mColor = Color.BLUE;
-                    while (true) {
-                        // Interrupts if collision occurred
-                        if (interrupt) {
-                            num_slots = mMod.getNewContention();
-                            interrupt = false;
-                            sleepFor(DIFS);
+                            try {
+                                mVehicle.wait();
+                            } catch (InterruptedException e) {
+                                // TODO Auto-generated catch block
+                                e.printStackTrace();
+                            }
                         }
                         
-                        if (delivered) {
+                        if (!transacting) {
                             return;
                         }
-                        
-                        // Time to send, so RTS (or receive RTR)
-                        if (transacting) {
+                    } else if (num_slots == 0) {
+                        oVehicle.requestToReceive(mVehicle);
+                        System.out.println(VIN + ": Start, angle: " + Math.toDegrees(Math.abs(mAngle - dAngle)));
+                        try {
                             synchronized (mVehicle) {
-                                try {
-                                    mVehicle.wait();
-                                } catch (InterruptedException e) {
-                                    // TODO Auto-generated catch block
-                                    e.printStackTrace();
-                                }
+                                mVehicle.wait();
                             }
-                            
-                            if (!transacting) {
-                                return;
+                        } catch (InterruptedException e) {
+                            // Should not be interrupted in this manner
+                            e.printStackTrace();
+                        }
+                        
+                        if (interrupt) {
+                            continue;
+                        }
+                        
+                        // Now wait until transaction is complete (1000 byte data transfer)
+                        try {
+                            synchronized (mVehicle) {
+                                mVehicle.wait();
                             }
-                        } else if (num_slots == 0) {
-                            oVehicle.requestToReceive(mVehicle);
-                            
-                            try {
-                                synchronized (mVehicle) {
-                                    mVehicle.wait();
-                                }
-                            } catch (InterruptedException e) {
-                                // Should not be interrupted in this manner
-                                e.printStackTrace();
-                            }
-                            
-                            if (interrupt) {
-                                continue;
-                            }
-                            
-                            // Now wait until transaction is complete (1000 byte data transfer)
-                            try {
-                                synchronized (mVehicle) {
-                                    mVehicle.wait();
-                                }
-                            } catch (InterruptedException e) {
-                                // Should not be interrupted in this manner
-                                e.printStackTrace();
-                            }
-                            
-                            if (interrupt) {
-                                continue;
-                            } else {
-                                mColor = Color.GREEN;
-                                startTransaction();
-                            }
+                        } catch (InterruptedException e) {
+                            // Should not be interrupted in this manner
+                            e.printStackTrace();
+                        }
+                        
+                        if (interrupt) {
+                            continue;
                         } else {
-                            // Wait for contention window/slot
-                            num_slots--;
-                            sleepFor(SLOT);
+                            System.out.println(VIN + ": End transaction");
+                            mColor = Color.GREEN;
+                            
+                            
+                            Scanner mScanner = new Scanner(System.in);
+                            mScanner.nextLine();
+                            
+                            startTransaction();
+                            return;
+                        }
+                    } else {
+                        // Wait for contention window/slot
+                        num_slots--;
+                        try {
+                            sleep(SLOT);
+                        } catch (InterruptedException e) {
+                            // Thread interrupted, kill self
+                            return;
                         }
                     }
-                } else {
-                    mColor = Color.CYAN;
                 }
+            } else {
+                mColor = Color.CYAN;
             }
         }
     }
