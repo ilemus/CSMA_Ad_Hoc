@@ -18,7 +18,7 @@ public class RunThread {
     protected ArrayList<GPS> mPath = new ArrayList<GPS>();
     private ArrayList<Integer> mContend = new ArrayList<Integer>();
     private RecordThread mRt = null;
-    private static final boolean DEMONSTRATE = false;
+    private static final boolean DEMONSTRATE = true;
     
     public RunThread() {
         mSelf = this;

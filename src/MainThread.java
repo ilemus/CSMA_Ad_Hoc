@@ -3,7 +3,7 @@ import java.io.File;
 public class MainThread {
     public static void main(String[] args) {
         File fp;
-        int NUM_THREADS = 50;
+        int NUM_THREADS = 1;
         
         if (args.length >= 1) {
             fp = new File(args[0]);

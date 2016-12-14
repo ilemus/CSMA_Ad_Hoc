@@ -266,6 +266,10 @@ public class Vehicle extends RunThread {
     public void startTransaction() {
         if (mRunThread.mPath.size() > ASSUME_LOST) {
             mRunThread.notifyFinished();
+            
+            for (int i = 0; i < mRunThread.aVehicle.size(); i++) {
+                mRunThread.aVehicle.get(i).messageDelivered();
+            }
             return;
         }
         
@@ -348,7 +352,7 @@ public class Vehicle extends RunThread {
                     }
                 } catch (InterruptedException e) {
                     // Should not be interrupted in this manner
-                    e.printStackTrace();
+                    //e.printStackTrace();
                 }
                 
                 if (interrupt) {
@@ -417,7 +421,12 @@ public class Vehicle extends RunThread {
                     
                     // Time to send, so RTS (or receive RTR)
                     if (transacting) {
-                        mRunThread.addContend(VIN);
+                        try {
+                            mRunThread.addContend(VIN);
+                        } catch (Exception e) {
+                            
+                        }
+                        
                         log(VIN + ": transacting occured");
                         synchronized (mVehicle) {
                             try {

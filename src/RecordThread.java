@@ -18,6 +18,7 @@ public class RecordThread {
         mHops.add(x);
         double temp = 0;
         double avg = 0;
+        double dev = 0;
         
         for (int i = 0; i < mHops.size(); i++) {
             if (mHops.get(i) > ASSUME_LOST) {
@@ -28,10 +29,16 @@ public class RecordThread {
         }
 
         avg = avg / (mHops.size() - temp);
+        
+        for (int i = 0; i < mHops.size(); i++) {
+            dev += Math.pow((mHops.get(i) - avg), 2);
+        }
+        
+        dev = dev/mHops.size();
 
         double percent = (double)(mHops.size() - temp) / mHops.size();
         
-        System.out.println("AVG: " + df.format(avg) + ", SUCCESS: " + df.format(percent));
+        System.out.println("AVG: " + df.format(avg) + ", Dev: " + df.format(dev) + ", SUCCESS: " + df.format(percent));
     }
     
     public int sizeOfArray() {
